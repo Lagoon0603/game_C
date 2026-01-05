@@ -4,8 +4,11 @@
 #include <math.h>
 
 // --- 定数 ---
-#define SCREEN_WIDTH 1280
-#define SCREEN_HEIGHT 720
+// #define SCREEN_WIDTH 1280
+// #define SCREEN_HEIGHT 720
+// リモート環境での動作安定化のため解像度を縮小
+#define SCREEN_WIDTH 800
+#define SCREEN_HEIGHT 450
 #define MAX_BULLETS 200
 #define MAX_ENEMIES 80
 #define MAX_PARTICLES 400
@@ -102,8 +105,12 @@ void SpawnExplosion(Vector3 pos, Color color, int count);
 
 // --- Main ---
 int main(void) {
+    // リモート環境向け設定: ウィンドウリサイズ許可
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Voxel Survivor 4.0 - Skyfall");
-    SetTargetFPS(60);
+    
+    // リモート環境では60FPSの転送が厳しいため30FPSに制限して安定化
+    SetTargetFPS(30);
     
     // 最初のカメラ初期化（タイトル用）
     camera.position = (Vector3){ 0.0f, 20.0f, 20.0f };
