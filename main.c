@@ -144,12 +144,13 @@ void UpdateTitle() {
     camera.position.z = cosf(time * 0.5f) * 30.0f;
     camera.target = (Vector3){ 0, 0, 0 };
 
-    if (IsKeyPressed(KEY_N)) {
+    // リモート環境対策: IsKeyPressed(一瞬)だと検知漏れするためIsKeyDown(押しっぱなし)に変更
+    if (IsKeyDown(KEY_N)) {
         difficulty = MODE_NORMAL;
         InitGame();
         current_state = STATE_PLAYING;
     }
-    if (IsKeyPressed(KEY_H)) {
+    if (IsKeyDown(KEY_H)) {
         difficulty = MODE_HARD;
         InitGame();
         current_state = STATE_PLAYING;
