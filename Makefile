@@ -9,21 +9,20 @@ TARGET = game
 UNAME_S := $(shell uname -s)
 
 # コンパイルフラグ
-# -Wall: 警告を全て出す（バグ発見に役立つ）
+# -Wall: 警告を全て出す
 # -std=c99: C99規格を使用
 CFLAGS = -Wall -std=c99
 
-# リンカフラグ
+# リンカフラグ初期化
 LDFLAGS =
 
 ifeq ($(UNAME_S),Linux)
     # Linux用の設定
-    # raylibが標準パスにあると仮定
+    # raylib, OpenGL, Math, Pthread, etc.
     LDFLAGS += -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
 else
-    # macOS用の設定
+    # macOS (Darwin) 用の設定
     # Homebrewでインストールされたraylibのパスを自動取得
-    # (M1/M2/M3 Macの /opt/homebrew にも Intel Macの /usr/local にも対応)
     RAYLIB_PATH = $(shell brew --prefix raylib)
     CFLAGS += -I$(RAYLIB_PATH)/include
     LDFLAGS += -L$(RAYLIB_PATH)/lib -lraylib \

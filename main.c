@@ -4,20 +4,21 @@
 #include <math.h>
 
 // --- 定数 ---
-// #define SCREEN_WIDTH 1280
-// #define SCREEN_HEIGHT 720
 // リモート環境での動作安定化のため解像度を縮小
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 450
 #define MAX_BULLETS 200
 #define MAX_ENEMIES 80
 #define MAX_PARTICLES 400
+#define KILLS_TO_BOSS 10 // ボス出現までのキル数（テスト用に少なめ）
 
 // --- ゲームの状態管理 ---
 typedef enum {
     STATE_TITLE,
     STATE_PLAYING,
-    STATE_GAMEOVER
+    STATE_GAMEOVER,
+    STATE_BOSS_INTRO, // ボス出現演出
+    STATE_STAGE_CLEAR // ステージクリア
 } GameState;
 
 typedef enum {
@@ -47,7 +48,7 @@ typedef struct {
     float facing_angle;
 } Player;
 
-typedef enum { ENEMY_DRONE, ENEMY_TANK } EnemyType;
+typedef enum { ENEMY_DRONE, ENEMY_TANK, ENEMY_BOSS } EnemyType;
 
 typedef struct {
     Vector3 position;
@@ -63,6 +64,9 @@ typedef struct {
     // 空から降ってくる用
     float vertical_speed; // 落下速度
     bool is_grounded;     // 着地したか？
+    
+    // ボス用
+    float shoot_cooldown;
 } Enemy;
 
 typedef struct {
@@ -91,6 +95,13 @@ Bullet bullets[MAX_BULLETS] = { 0 };
 Particle particles[MAX_PARTICLES] = { 0 };
 Camera3D camera = { 0 };
 float game_time = 0.0f;
+
+// 追加: ゲーム進行管理
+int current_stage = 1;
+int stage_kills = 0;
+bool boss_active = false;
+float boss_intro_timer = 0.0f; // 演出用
+
 
 // --- 関数プロトタイプ ---
 void InitGame();
