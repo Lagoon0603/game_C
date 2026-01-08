@@ -815,14 +815,14 @@ void UpdateGamePvP() {
     }
 
     // 修正: 座標制限を定数で管理
-    if (player.position.x > FIELD_LIMIT) player.position.x = FIELD_LIMIT;
-    if (player.position.x < -FIELD_LIMIT) player.position.x = -FIELD_LIMIT;
-    if (player.position.z > FIELD_LIMIT) player.position.z = FIELD_LIMIT;
-    if (player.position.z < -FIELD_LIMIT) player.position.z = -FIELD_LIMIT;
-    if (player2.position.x > FIELD_LIMIT) player2.position.x = FIELD_LIMIT;
-    if (player2.position.x < -FIELD_LIMIT) player2.position.x = -FIELD_LIMIT;
-    if (player2.position.z > FIELD_LIMIT) player2.position.z = FIELD_LIMIT;
-    if (player2.position.z < -FIELD_LIMIT) player2.position.z = -FIELD_LIMIT;
+    // if (player.position.x > FIELD_LIMIT) player.position.x = FIELD_LIMIT;
+    // if (player.position.x < -FIELD_LIMIT) player.position.x = -FIELD_LIMIT;
+    // if (player.position.z > FIELD_LIMIT) player.position.z = FIELD_LIMIT;
+    // if (player.position.z < -FIELD_LIMIT) player.position.z = -FIELD_LIMIT;
+    // if (player2.position.x > FIELD_LIMIT) player2.position.x = FIELD_LIMIT;
+    // if (player2.position.x < -FIELD_LIMIT) player2.position.x = -FIELD_LIMIT;
+    // if (player2.position.z > FIELD_LIMIT) player2.position.z = FIELD_LIMIT;
+    // if (player2.position.z < -FIELD_LIMIT) player2.position.z = -FIELD_LIMIT;
 
     Vector3 p1CamBase = Vector3Add(player.position, (Vector3){0, 20, 15});
     Vector3 p2CamBase = Vector3Add(player2.position, (Vector3){0, 20, 15});
