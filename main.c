@@ -3,20 +3,24 @@
 #include "raymath.h"
 #include <math.h>
 #include <stdio.h>
-#include <stdlib.h> // rand, abs用
+#include <stdlib.h>
 
-// --- 定数 ---
+
+
+// 画面・システム設定
 #define INITIAL_SCREEN_WIDTH 800
 #define INITIAL_SCREEN_HEIGHT 450
 #define MAX_BULLETS 300
 #define MAX_ENEMIES 100
 #define MAX_PARTICLES 600
 #define MAX_ITEMS 100
+
+// バランス調整
 #define KILLS_TO_BOSS_BASE 10
 #define TRAIL_LENGTH 10
-#define FIELD_LIMIT 45.0f // マップの広さ制限
+#define FIELD_LIMIT 45.0f
 
-// --- 色定義 (ネオンカラー) ---
+// カラー設定
 #define COL_NEON_CYAN   (Color){ 0, 255, 255, 255 }
 #define COL_NEON_PINK   (Color){ 255, 0, 255, 255 }
 #define COL_NEON_GREEN  (Color){ 0, 255, 100, 255 }
@@ -24,7 +28,10 @@
 #define COL_NEON_ORANGE (Color){ 255, 100, 0, 255 }
 #define COL_DARK_BG     (Color){ 5, 5, 10, 255 }
 
-// --- ゲームの状態管理 ---
+
+
+// 構造体定義
+// ゲーム遷移
 typedef enum {
     STATE_TITLE,
     STATE_PLAYING,
@@ -36,12 +43,13 @@ typedef enum {
     STATE_PAUSED
 } GameState;
 
+// 難易度
 typedef enum {
     MODE_NORMAL,
     MODE_HARD
 } DifficultyMode;
 
-// --- 構造体 ---
+// プレイヤー情報
 typedef struct {
     Vector3 position;
     float speed;
@@ -53,24 +61,19 @@ typedef struct {
     int damage;
     int weapon_type; 
     float shoot_cooldown;
-    
-    // アクション用
     float dash_cooldown;
     float dash_duration;
     Vector3 dash_dir;
-    
-    // アニメーション用
     float walk_anim_timer;
     float facing_angle;
     float invincible_timer;
-    
-    // 残像用
     Vector3 trail_pos[TRAIL_LENGTH];
     int trail_idx;
 } Player;
 
 typedef enum { ENEMY_DRONE, ENEMY_TANK, ENEMY_BOSS } EnemyType;
 
+// 敵情報
 typedef struct {
     Vector3 position;
     bool active;
@@ -87,6 +90,7 @@ typedef struct {
     float attack_range;
 } Enemy;
 
+// 弾設定
 typedef struct {
     Vector3 position;
     Vector3 velocity;
@@ -96,6 +100,7 @@ typedef struct {
     bool is_p2_bullet;
 } Bullet;
 
+// エフェクト
 typedef struct {
     Vector3 position;
     Vector3 velocity;
@@ -108,6 +113,7 @@ typedef struct {
 
 typedef enum { ITEM_HEAL, ITEM_EXP } ItemType;
 
+// アイテム
 typedef struct {
     Vector3 position;
     bool active;
@@ -116,11 +122,14 @@ typedef struct {
     float angle;
 } Item;
 
-// --- グローバル変数 ---
+
+
+// グローバル変数
 GameState current_state = STATE_TITLE;
 GameState previous_state = STATE_TITLE;
 DifficultyMode difficulty = MODE_NORMAL;
 
+// エンティティ
 Player player = { 0 };
 Player player2 = { 0 };
 Enemy enemies[MAX_ENEMIES] = { 0 };
@@ -128,9 +137,11 @@ Bullet bullets[MAX_BULLETS] = { 0 };
 Particle particles[MAX_PARTICLES] = { 0 };
 Item items[MAX_ITEMS] = { 0 };
 
+// カメラ
 Camera3D camera = { 0 };
 Camera3D camera2 = { 0 };
 
+// 進行状況
 float game_time = 0.0f;
 int winner_id = 0;
 int current_stage = 1;
@@ -138,14 +149,10 @@ int stage_kills = 0;
 int kills_required_for_boss = KILLS_TO_BOSS_BASE;
 bool boss_spawned = false;
 float state_timer = 0.0f;
-float enemy_spawn_timer = 0.0f; // 追加: FPS非依存のスポーン用
-
+float enemy_spawn_timer = 0.0f;
 float screen_shake = 0.0f;
-// --- グローバル変数 ---
-// (既存の変数の下あたりに追加)
-float camera_angle_rad = 0.0f; // カメラの回転角度 (ラジアン)
+float camera_angle_rad = 0.0f;
 
-// --- 関数プロトタイプ ---
 void InitGame(bool reset_player);
 void UpdateGame();
 void UpdateGamePvP();
@@ -164,9 +171,11 @@ void SpawnItem(Vector3 pos);
 void ResetStage();
 void AddScreenShake(float amount);
 void UpdateTrail(Player *p);
-void DrawCyberGrid(Vector3 centerPos); // 修正: 座標連動型グリッド
+void DrawCyberGrid(Vector3 centerPos);
 
-// --- Main ---
+
+
+// メイン
 int main(void) {
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT);
     InitWindow(INITIAL_SCREEN_WIDTH, INITIAL_SCREEN_HEIGHT, "Voxel Survivor 6.1 - Bug Fixes");
@@ -214,7 +223,7 @@ int main(void) {
 void UpdatePaused() { 
     if (IsKeyPressed(KEY_R)) {
         current_state = STATE_TITLE;
-        camera_angle_rad = 0.0f; // ★追加：カメラ角度リセット
+        camera_angle_rad = 0.0f;
     }
 }
 
@@ -251,7 +260,6 @@ void DrawTitle() {
     ClearBackground(COL_DARK_BG);
     
     BeginMode3D(camera);
-        // タイトル画面は中心固定で動かす
         DrawCyberGrid((Vector3){0,0,GetTime()*5.0f}); 
         DrawMecha((Vector3){5,0,0}, 0, COL_NEON_PINK, GetTime(), ENEMY_DRONE);
         DrawMecha((Vector3){-5,0,0}, 3.14, COL_NEON_PURPLE, GetTime(), ENEMY_TANK);
@@ -268,13 +276,13 @@ void DrawTitle() {
 void InitGame(bool reset_player) {
     if (reset_player) {
         player.position = (Vector3){ 0, 0, 0 };
-        player.speed = 12.0f; // 10.0f -> 12.0f (少し足も速くする)
+        player.speed = 12.0f;
         player.hp = 100; player.max_hp = 100;
         player.level = 1; player.exp = 0; 
-        player.next_level_exp = 5; // 最初は5個拾えばレベルアップ（サクサク感）
-        player.damage = 20; // ★追加: 初期攻撃力を高めに設定
+        player.next_level_exp = 5;
+        player.damage = 20;
         player.weapon_type = 0;
-        player.shoot_cooldown = 0.0f; // 初期状態
+        player.shoot_cooldown = 0.0f;
         player.dash_cooldown = 0; player.dash_duration = 0;
         player.invincible_timer = 0;
         for(int i=0; i<TRAIL_LENGTH; i++) player.trail_pos[i] = player.position;
@@ -312,22 +320,16 @@ void UpdateTrail(Player *p) {
     }
 }
 
-// --- グリッド描画 (修正版: プレイヤー座標連動) ---
 void DrawCyberGrid(Vector3 centerPos) {
     int slices = 20;
     float spacing = 4.0f;
-    
-    // プレイヤーの位置に基づいてオフセットを計算
-    // これにより、自分が動いた分だけ床がスクロールし、接地感が生まれる
     float offsetX = centerPos.x - fmodf(centerPos.x, spacing);
     float offsetZ = centerPos.z - fmodf(centerPos.z, spacing);
 
     rlBegin(RL_LINES);
-    // 縦線
     for (int i = -slices; i <= slices; i++) {
         float xPos = offsetX + i * spacing;
         
-        // プレイヤーからの距離で透明度を変える（遠くを消す）
         float dist = fabsf(xPos - centerPos.x);
         float alpha = 1.0f - (dist / (slices * spacing));
         if(alpha < 0) alpha = 0;
@@ -337,7 +339,7 @@ void DrawCyberGrid(Vector3 centerPos) {
         rlVertex3f(xPos, 0, centerPos.z - slices * spacing);
         rlVertex3f(xPos, 0, centerPos.z + slices * spacing);
     }
-    // 横線
+
     for (int i = -slices; i <= slices; i++) {
         float zPos = offsetZ + i * spacing;
         
@@ -418,10 +420,11 @@ void UpdateGame() {
     float dt = GetFrameTime();
     game_time += dt;
 
+    // 特殊状態
     if (current_state == STATE_GAMEOVER) {
         if (IsKeyPressed(KEY_R)) {
             current_state = STATE_TITLE;
-            camera_angle_rad = 0.0f; // ★追加：カメラ角度リセット
+            camera_angle_rad = 0.0f;
         }
         return;
     }
@@ -444,23 +447,12 @@ void UpdateGame() {
         return; 
     }
 
-// UpdateGame 関数内
+    // 視点移動
+    if (IsKeyDown(KEY_E)) camera_angle_rad -= 2.0f * dt;
+    if (IsKeyDown(KEY_Q)) camera_angle_rad += 2.0f * dt;
 
-    // ---------------------------------------------------------
-    // 1. カメラ回転の入力を受け付ける (Q/Eキー)
-    // ---------------------------------------------------------
-    if (IsKeyDown(KEY_E)) camera_angle_rad -= 2.0f * dt; // 右回転
-    if (IsKeyDown(KEY_Q)) camera_angle_rad += 2.0f * dt; // 左回転
-
-    // ---------------------------------------------------------
-    // 2. カメラ位置の計算 (回転を適用)
-    // ---------------------------------------------------------
-    // プレイヤーから見たカメラの基本距離
-    float camDistH = 18.0f; // 水平距離
-    float camHeight = 25.0f; // 高さ
-
-    // 角度に基づいてカメラのオフセット位置を計算 (三角関数)
-    // sin/cosを使って、プレイヤーを中心に円周上を動かす
+    float camDistH = 18.0f;
+    float camHeight = 25.0f;
     float camOffsetX = sinf(camera_angle_rad) * camDistH;
     float camOffsetZ = cosf(camera_angle_rad) * camDistH;
 
@@ -470,13 +462,10 @@ void UpdateGame() {
         player.position.z + camOffsetZ
     };
 
-    // マウスカーソルによる少しの視点移動（既存の機能）も回転に対応させる
     Ray ray = GetMouseRay(GetMousePosition(), camera);
-    // マウス位置の計算（安全策済み）
     float t = -ray.position.y / ray.direction.y;
     Vector3 aim_point = Vector3Add(ray.position, Vector3Scale(ray.direction, t));
     
-    // シェイクやスムーズな移動を適用
     float shakeX = (float)GetRandomValue(-10, 10) * 0.05f * screen_shake;
     float shakeZ = (float)GetRandomValue(-10, 10) * 0.05f * screen_shake;
     Vector3 finalCamPos = Vector3Add(targetCamPos, (Vector3){shakeX, 0, shakeZ});
@@ -484,31 +473,22 @@ void UpdateGame() {
     camera.position = Vector3Lerp(camera.position, finalCamPos, 0.1f);
     camera.target = Vector3Lerp(camera.target, player.position, 0.1f);
 
-    // ---------------------------------------------------------
-    // 3. プレイヤーの移動処理 (カメラの向きに合わせて操作を変更)
-    // ---------------------------------------------------------
-    // プレイヤーの向き更新
     Vector3 diff = Vector3Subtract(aim_point, player.position);
     player.facing_angle = -atan2f(diff.z, diff.x) + PI/2;
 
-    // ダッシュ等の処理...（ここは変更なし）
     UpdateTrail(&player);
     if (player.invincible_timer > 0) player.invincible_timer -= dt;
     
-    // ★★★ 移動入力の修正 (カメラ基準にする) ★★★
+    //プレイヤー移動
     Vector3 move = {0};
-    
-    // カメラの前方向と右方向のベクトルを計算
-    // カメラはプレイヤーを見ているので、逆方向が「画面の前」になります
     Vector3 forward = { -sinf(camera_angle_rad), 0, -cosf(camera_angle_rad) };
     Vector3 right   = { cosf(camera_angle_rad),  0, -sinf(camera_angle_rad) };
 
-    if (IsKeyDown(KEY_W)) move = Vector3Add(move, forward); // 前
-    if (IsKeyDown(KEY_S)) move = Vector3Subtract(move, forward); // 後
-    if (IsKeyDown(KEY_D)) move = Vector3Add(move, right); // 右
-    if (IsKeyDown(KEY_A)) move = Vector3Subtract(move, right); // 左
+    if (IsKeyDown(KEY_W)) move = Vector3Add(move, forward);
+    if (IsKeyDown(KEY_S)) move = Vector3Subtract(move, forward);
+    if (IsKeyDown(KEY_D)) move = Vector3Add(move, right);
+    if (IsKeyDown(KEY_A)) move = Vector3Subtract(move, right);
 
-    // ダッシュ方向の修正
     if ((IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_LEFT_SHIFT)) && player.dash_cooldown <= 0) {
         player.dash_duration = 0.2f;
         player.dash_cooldown = 1.5f;
@@ -516,7 +496,6 @@ void UpdateGame() {
         if (Vector3Length(move) > 0) {
             player.dash_dir = Vector3Normalize(move);
         } else {
-            // 移動していないときはマウスの方向へダッシュ
             if (Vector3Length(diff) > 0.1f) player.dash_dir = Vector3Normalize(diff);
             else player.dash_dir = (Vector3){0, 0, 1};
         }
@@ -524,7 +503,6 @@ void UpdateGame() {
         AddScreenShake(0.2f);
     }
     
-    // 通常移動の適用
     if (player.dash_duration > 0) {
         player.dash_duration -= dt;
         player.position = Vector3Add(player.position, Vector3Scale(player.dash_dir, player.speed * 3.0f * dt));
@@ -535,13 +513,8 @@ void UpdateGame() {
             player.walk_anim_timer += dt;
         } else player.walk_anim_timer = 0;
     }
-    
-    // エリア制限 (クランプ処理)
-    // if (player.position.x > FIELD_LIMIT) player.position.x = FIELD_LIMIT;
-    // if (player.position.x < -FIELD_LIMIT) player.position.x = -FIELD_LIMIT;
-    // if (player.position.z > FIELD_LIMIT) player.position.z = FIELD_LIMIT;
-    // if (player.position.z < -FIELD_LIMIT) player.position.z = -FIELD_LIMIT;
 
+    // 攻撃
     if (player.shoot_cooldown > 0) player.shoot_cooldown -= dt;
     if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) && player.shoot_cooldown <= 0) {
         Vector3 aim_dir = Vector3Normalize(Vector3Subtract(aim_point, player.position));
@@ -553,15 +526,12 @@ void UpdateGame() {
         AddScreenShake(0.1f);
     }
 
-    // 弾更新
+    // ヒット判定
     for (int i=0; i<MAX_BULLETS; i++) {
         if (!bullets[i].active) continue;
         bullets[i].position = Vector3Add(bullets[i].position, Vector3Scale(bullets[i].velocity, dt));
         bullets[i].life_time -= dt;
-        // ▼▼▼ 修正前（原点から離れると消える） ▼▼▼
-        // if (bullets[i].life_time <= 0 || fabs(bullets[i].position.x) > 60 || fabs(bullets[i].position.z) > 60) {
-        
-        // ▼▼▼ 修正後（時間経過でのみ消えるように変更） ▼▼▼
+
         if (bullets[i].life_time <= 0) { 
             bullets[i].active = false;
             continue;
@@ -579,36 +549,28 @@ void UpdateGame() {
         }
     }
 
-    // アイテム
+    // アイテム取得
     for (int i=0; i<MAX_ITEMS; i++) {
         if (!items[i].active) continue;
         items[i].angle += dt * 90.0f;
         items[i].life_time -= dt;
         if (items[i].life_time <= 0) items[i].active = false;
-        // UpdateGame 内のアイテム当たり判定部分
-        // アイテム当たり判定部分
-        if (Vector3Distance(player.position, items[i].position) < 3.0f) { // 2.0 -> 3.0 (拾う範囲を広く)
+        if (Vector3Distance(player.position, items[i].position) < 3.0f) {
             if (items[i].type == ITEM_HEAL) {
                 player.hp += 30;
                 if(player.hp > player.max_hp) player.hp = player.max_hp;
                 SpawnExplosion(player.position, COL_NEON_GREEN, 10);
             } 
             else if (items[i].type == ITEM_EXP) {
-                player.exp += 1; // 経験値は1ずつで管理しやすくする
+                player.exp += 1;
                 
-                // レベルアップ処理
                 if (player.exp >= player.next_level_exp) {
                     player.level++;
                     player.exp = 0;
-                    
-                    // 次のレベルまでの必要経験値を緩やかにする
-                    // 以前は1.5倍だったが、単なる足し算にする
                     player.next_level_exp += 5; 
-
-                    // ステータス強化
                     player.max_hp += 10;
-                    player.hp = player.max_hp; // 全回復
-                    player.damage += 5; // 攻撃力アップ！
+                    player.hp = player.max_hp;
+                    player.damage += 5;
                     
                     SpawnExplosion(player.position, GOLD, 20);
                 }
@@ -618,7 +580,7 @@ void UpdateGame() {
         }
     }
 
-    // 敵スポーン (修正: 時間ベースに変更してFPS依存を解消)
+    // 敵のスポーン
     if (!boss_spawned) {
         if (stage_kills >= kills_required_for_boss) {
             current_state = STATE_BOSS_INTRO;
@@ -630,7 +592,7 @@ void UpdateGame() {
             }
         } else {
             enemy_spawn_timer += dt;
-            float spawnInterval = 0.5f - (current_stage * 0.05f); // ステージが進むと湧き間隔が短くなる
+            float spawnInterval = 0.5f - (current_stage * 0.05f);
             if (spawnInterval < 0.1f) spawnInterval = 0.1f;
             if (difficulty == MODE_HARD) spawnInterval *= 0.7f;
 
@@ -641,6 +603,7 @@ void UpdateGame() {
         }
     }
 
+    // 敵の制御
     for (int i=0; i<MAX_ENEMIES; i++) {
         if (!enemies[i].active) continue;
         if (!enemies[i].is_grounded) {
@@ -679,6 +642,7 @@ void UpdateGame() {
             if (player.hp <= 0) current_state = STATE_GAMEOVER;
         }
 
+        // プレイヤーと敵の当たり判定
         float hitSize = (enemies[i].type == ENEMY_BOSS) ? 2.5f : 1.0f;
         BoundingBox box = {
             (Vector3){enemies[i].position.x - hitSize, 0, enemies[i].position.z - hitSize},
@@ -686,14 +650,10 @@ void UpdateGame() {
         };
         for (int b=0; b<MAX_BULLETS; b++) {
             if (!bullets[b].active || bullets[b].is_enemy_bullet) continue;
-            if (CheckCollisionBoxSphere(box, bullets[b].position, 0.5f)) { // 判定も0.3->0.5にして当てやすく
+            if (CheckCollisionBoxSphere(box, bullets[b].position, 0.5f)) {
                 bullets[b].active = false;
-                
-                // ★修正: 固定の10ダメージではなく、プレイヤーの攻撃力を使う
                 enemies[i].hp -= player.damage; 
-
                 enemies[i].flash_timer = 0.1f;
-                // ... (以下省略)
                 if (enemies[i].type != ENEMY_BOSS) {
                     Vector3 push = Vector3Normalize(bullets[b].velocity);
                     enemies[i].knockback = Vector3Add(enemies[i].knockback, Vector3Scale(push, 15.0f));
@@ -725,13 +685,13 @@ void UpdateGame() {
     }
 }
 
+// ２人対戦
 void UpdateGamePvP() {
     float dt = GetFrameTime();
-    // 修正: 勝敗が決まったら入力を受け付けない
     if (current_state == STATE_PVP_RESULT) {
         if (IsKeyPressed(KEY_R)) {
             current_state = STATE_TITLE;
-            camera_angle_rad = 0.0f; // ★追加：カメラ角度リセット
+            camera_angle_rad = 0.0f;
         }
         return;
     }
@@ -763,7 +723,6 @@ void UpdateGamePvP() {
     }
     if (player.dash_cooldown > 0) player.dash_cooldown -= dt;
 
-    // P1 Aim
     Vector2 mousePos = GetMousePosition();
     float screenW = (float)GetScreenWidth();
     if (mousePos.x > screenW / 2.0f) mousePos.x = screenW / 2.0f;
@@ -814,16 +773,6 @@ void UpdateGamePvP() {
         player2.shoot_cooldown = 0.3f;
     }
 
-    // 修正: 座標制限を定数で管理
-    // if (player.position.x > FIELD_LIMIT) player.position.x = FIELD_LIMIT;
-    // if (player.position.x < -FIELD_LIMIT) player.position.x = -FIELD_LIMIT;
-    // if (player.position.z > FIELD_LIMIT) player.position.z = FIELD_LIMIT;
-    // if (player.position.z < -FIELD_LIMIT) player.position.z = -FIELD_LIMIT;
-    // if (player2.position.x > FIELD_LIMIT) player2.position.x = FIELD_LIMIT;
-    // if (player2.position.x < -FIELD_LIMIT) player2.position.x = -FIELD_LIMIT;
-    // if (player2.position.z > FIELD_LIMIT) player2.position.z = FIELD_LIMIT;
-    // if (player2.position.z < -FIELD_LIMIT) player2.position.z = -FIELD_LIMIT;
-
     Vector3 p1CamBase = Vector3Add(player.position, (Vector3){0, 20, 15});
     Vector3 p2CamBase = Vector3Add(player2.position, (Vector3){0, 20, 15});
     float shakeX = (float)GetRandomValue(-10, 10) * 0.05f * screen_shake;
@@ -842,7 +791,6 @@ void UpdateGamePvP() {
         Vector3 p1Center = {player.position.x, 1, player.position.z};
         Vector3 p2Center = {player2.position.x, 1, player2.position.z};
 
-        // 修正: リザルト画面に遷移したら判定を行わない（死体撃ち防止）
         if (current_state == STATE_PVP_RESULT) continue;
 
         if (bullets[i].is_p2_bullet && player.invincible_timer <= 0 && player.dash_duration <= 0) {
@@ -872,6 +820,7 @@ void UpdateGamePvP() {
     }
 }
 
+// UI
 void DrawGame() {
     int w = GetScreenWidth();
     int h = GetScreenHeight();
@@ -881,33 +830,18 @@ void DrawGame() {
     DrawScene(camera, true);
     EndMode3D();
 
-    // --- UI描画 ---
-
-    // 1. ステージ数
     DrawText(TextFormat("STAGE %d", current_stage), 20, 20, 30, WHITE);
-    
-    // 2. HP表示
     DrawText(TextFormat("HP: %d/%d", player.hp, player.max_hp), 20, 60, 40, (player.hp < 30 ? COL_NEON_PINK : COL_NEON_GREEN));
-
-    // ▼▼▼ 追加：レベル表示 ▼▼▼
     DrawText(TextFormat("LV. %d", player.level), 20, 110, 40, GOLD);
 
-    // ▼▼▼ 追加：経験値バー（黄色いゲージ） ▼▼▼
-    // 現在の経験値の割合を計算
     float expRatio = (float)player.exp / (float)player.next_level_exp;
     if (expRatio > 1.0f) expRatio = 1.0f;
 
-    // バーの背景（暗い黄色）
     DrawRectangle(140, 120, 200, 20, (Color){ 50, 40, 0, 200 });
-    // バーの中身（明るい黄色）
     DrawRectangle(140, 120, (int)(200 * expRatio), 20, GOLD);
-    // 枠線
     DrawRectangleLines(140, 120, 200, 20, WHITE);
-    
-    // ついでに次のレベルまでの数値を小さく表示
     DrawText(TextFormat("EXP: %d/%d", player.exp, player.next_level_exp), 150, 122, 10, BLACK);
 
-    // --- ボス戦ゲージなど（既存のコード） ---
     if (!boss_spawned) {
         float progress = (float)stage_kills / kills_required_for_boss;
         if(progress > 1.0) progress = 1.0;
@@ -979,40 +913,35 @@ void DrawGamePvP() {
 }
 
 void DrawScene(Camera3D cam, bool draw_cursor) {
-    // 1. グリッドの描画
+    // 地面の描画
     DrawCyberGrid(cam.target);
 
-    // 2. 3Dカーソル（照準）の描画 
-    // ★重要: draw_cursor が true の時だけ実行する
+    // マウスカーソル
     if (draw_cursor) {
         Ray ray = GetMouseRay(GetMousePosition(), cam);
-        // 平面(Y=0)との交差判定
         if (ray.direction.y != 0) {
             float t = -ray.position.y / ray.direction.y;
             Vector3 aimPos = Vector3Add(ray.position, Vector3Scale(ray.direction, t));
             
             rlPushMatrix();
             rlTranslatef(aimPos.x, 0.1f, aimPos.z);
-            rlRotatef(GetTime() * 90.0f, 0, 1, 0); // クルクル回す
+            rlRotatef(GetTime() * 90.0f, 0, 1, 0);
             
-            // 外側の四角枠
             DrawCubeWires((Vector3){0,0,0}, 2.0f, 0.0f, 2.0f, ColorAlpha(COL_NEON_CYAN, 0.8f));
-            // 内側の点
             DrawCube((Vector3){0,0,0}, 0.3f, 0.3f, 0.3f, WHITE);
             
             rlPopMatrix();
             
-            // プレイヤーから照準へのレーザー
             DrawLine3D(player.position, aimPos, ColorAlpha(COL_NEON_CYAN, 0.3f));
         }
     }
 
-    // 3. プレイヤー（自分）の描画
+    // P1
     Color p1Color = (player.dash_duration > 0) ? COL_NEON_CYAN : BLUE;
     if (player.invincible_timer > 0 && (int)(GetTime()*20)%2 == 0) p1Color = WHITE;
     DrawMecha(player.position, player.facing_angle, p1Color, player.walk_anim_timer, ENEMY_DRONE);
     
-    // ダッシュの残像 (P1)
+    // P1のダッシュの残像
     if(player.dash_duration > 0){
         for(int i=0; i<TRAIL_LENGTH; i+=2) {
             if(player.trail_pos[i].x != 0) {
@@ -1022,13 +951,13 @@ void DrawScene(Camera3D cam, bool draw_cursor) {
         }
     }
 
-    // 4. P2 (対戦相手) の描画
+    // P2
     if (current_state == STATE_PVP || current_state == STATE_PVP_RESULT || (current_state == STATE_PAUSED && previous_state == STATE_PVP)) {
         Color p2Color = (player2.dash_duration > 0) ? COL_NEON_ORANGE : ORANGE;
         if (player2.invincible_timer > 0 && (int)(GetTime()*20)%2 == 0) p2Color = WHITE;
         DrawMecha(player2.position, player2.facing_angle, p2Color, player2.walk_anim_timer, ENEMY_TANK);
         
-        // ダッシュの残像 (P2)
+        // P2のダッシュの残像
         if(player2.dash_duration > 0){
             for(int i=0; i<TRAIL_LENGTH; i+=2) {
                 if(player2.trail_pos[i].x != 0) {
@@ -1039,13 +968,17 @@ void DrawScene(Camera3D cam, bool draw_cursor) {
         }
     }
 
-    // 5. 敵の描画
+    // 敵
     for (int i=0; i<MAX_ENEMIES; i++) {
         if (!enemies[i].active) continue;
+
+        // 着地点表示
         if (!enemies[i].is_grounded) {
             DrawLine3D(enemies[i].position, (Vector3){enemies[i].position.x, 0, enemies[i].position.z}, ColorAlpha(RED, 0.5f));
             DrawCircle3D((Vector3){enemies[i].position.x, 0.1f, enemies[i].position.z}, 1.0f, (Vector3){1,0,0}, 90, ColorAlpha(RED, 0.3f));
         }
+
+        // 敵の色分け
         Color eColor = COL_NEON_PINK;
         if (enemies[i].type == ENEMY_TANK) eColor = COL_NEON_PURPLE;
         if (enemies[i].type == ENEMY_BOSS) eColor = COL_NEON_ORANGE;
@@ -1064,10 +997,11 @@ void DrawScene(Camera3D cam, bool draw_cursor) {
         }
     }
     
-    // 6. 弾、アイテム、パーティクルの描画
+    // 弾やアイテムなど
     rlDrawRenderBatchActive(); 
     BeginBlendMode(BLEND_ADDITIVE); 
 
+    // 弾
     for (int i=0; i<MAX_BULLETS; i++) {
         if (bullets[i].active) {
             Color bColor = COL_NEON_CYAN;
@@ -1078,6 +1012,8 @@ void DrawScene(Camera3D cam, bool draw_cursor) {
             DrawSphere(bullets[i].position, bSize * 0.5f, WHITE);
         }
     }
+
+    // アイテム
     for (int i=0; i<MAX_ITEMS; i++) {
         if(items[i].active) {
             rlPushMatrix();
@@ -1089,6 +1025,8 @@ void DrawScene(Camera3D cam, bool draw_cursor) {
             rlPopMatrix();
         }
     }
+
+    // 爆発
     for (int i=0; i<MAX_PARTICLES; i++) {
         if (particles[i].active) {
             float alpha = particles[i].life / particles[i].max_life;
@@ -1147,14 +1085,14 @@ void SpawnEnemy(bool force_boss) {
             }
             if (current_stage > 1 && GetRandomValue(0, 100) < 30) {
                 enemies[i].type = ENEMY_TANK;
-                enemies[i].speed = 3.0f; // 遅くする
-                enemies[i].max_hp = 60 + (current_stage * 10); // HPを下げる
+                enemies[i].speed = 3.0f;
+                enemies[i].max_hp = 60 + (current_stage * 10);
                 enemies[i].hp = enemies[i].max_hp;
                 enemies[i].attack_range = 15.0f;
             } else {
                 enemies[i].type = ENEMY_DRONE;
-                enemies[i].speed = 6.0f; // 8.0 -> 6.0 (プレイヤーより遅くする)
-                enemies[i].max_hp = 20 + (current_stage * 5); // HPを下げる（一撃で倒せるように）
+                enemies[i].speed = 6.0f;
+                enemies[i].max_hp = 20 + (current_stage * 5);
                 enemies[i].hp = enemies[i].max_hp;
                 enemies[i].attack_range = 5.0f; 
             }
@@ -1163,13 +1101,11 @@ void SpawnEnemy(bool force_boss) {
     }
 }
 
-// Main.c の SpawnItem 関数を修正
 void SpawnItem(Vector3 pos) {
     for (int i=0; i<MAX_ITEMS; i++) {
         if (!items[i].active) {
             items[i].active = true; 
             items[i].position = pos;
-            // 70%の確率で経験値、30%で回復にする
             items[i].type = (GetRandomValue(0, 100) < 70) ? ITEM_EXP : ITEM_HEAL; 
             items[i].life_time = 15.0f; 
             items[i].angle = 0;
