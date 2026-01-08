@@ -140,6 +140,9 @@ float state_timer = 0.0f;
 float enemy_spawn_timer = 0.0f; // 追加: FPS非依存のスポーン用
 
 float screen_shake = 0.0f;
+// --- グローバル変数 ---
+// (既存の変数の下あたりに追加)
+float camera_angle_rad = 0.0f; // カメラの回転角度 (ラジアン)
 
 // --- 関数プロトタイプ ---
 void InitGame(bool reset_player);
@@ -428,21 +431,39 @@ void UpdateGame() {
         return; 
     }
 
-    // カメラ追従
+// UpdateGame 関数内
+
+    // ---------------------------------------------------------
+    // 1. カメラ回転の入力を受け付ける (Q/Eキー)
+    // ---------------------------------------------------------
+    if (IsKeyDown(KEY_E)) camera_angle_rad -= 2.0f * dt; // 右回転
+    if (IsKeyDown(KEY_Q)) camera_angle_rad += 2.0f * dt; // 左回転
+
+    // ---------------------------------------------------------
+    // 2. カメラ位置の計算 (回転を適用)
+    // ---------------------------------------------------------
+    // プレイヤーから見たカメラの基本距離
+    float camDistH = 18.0f; // 水平距離
+    float camHeight = 25.0f; // 高さ
+
+    // 角度に基づいてカメラのオフセット位置を計算 (三角関数)
+    // sin/cosを使って、プレイヤーを中心に円周上を動かす
+    float camOffsetX = sinf(camera_angle_rad) * camDistH;
+    float camOffsetZ = cosf(camera_angle_rad) * camDistH;
+
+    Vector3 targetCamPos = {
+        player.position.x + camOffsetX,
+        camHeight,
+        player.position.z + camOffsetZ
+    };
+
+    // マウスカーソルによる少しの視点移動（既存の機能）も回転に対応させる
     Ray ray = GetMouseRay(GetMousePosition(), camera);
+    // マウス位置の計算（安全策済み）
     float t = -ray.position.y / ray.direction.y;
     Vector3 aim_point = Vector3Add(ray.position, Vector3Scale(ray.direction, t));
     
-    Vector3 d = Vector3Subtract(aim_point, player.position);
-    player.facing_angle = -atan2f(d.z, d.x) + PI/2;
-    
-    Vector3 mouseOffset = Vector3Scale(Vector3Normalize(Vector3Subtract(aim_point, player.position)), 5.0f);
-    Vector3 targetCamPos = {
-        player.position.x + mouseOffset.x * 0.3f, 
-        25.0f, 
-        player.position.z + 18.0f + mouseOffset.z * 0.3f
-    };
-    
+    // シェイクやスムーズな移動を適用
     float shakeX = (float)GetRandomValue(-10, 10) * 0.05f * screen_shake;
     float shakeZ = (float)GetRandomValue(-10, 10) * 0.05f * screen_shake;
     Vector3 finalCamPos = Vector3Add(targetCamPos, (Vector3){shakeX, 0, shakeZ});
@@ -450,48 +471,63 @@ void UpdateGame() {
     camera.position = Vector3Lerp(camera.position, finalCamPos, 0.1f);
     camera.target = Vector3Lerp(camera.target, player.position, 0.1f);
 
-    // プレイヤー処理
+    // ---------------------------------------------------------
+    // 3. プレイヤーの移動処理 (カメラの向きに合わせて操作を変更)
+    // ---------------------------------------------------------
+    // プレイヤーの向き更新
+    Vector3 diff = Vector3Subtract(aim_point, player.position);
+    player.facing_angle = -atan2f(diff.z, diff.x) + PI/2;
+
+    // ダッシュ等の処理...（ここは変更なし）
     UpdateTrail(&player);
     if (player.invincible_timer > 0) player.invincible_timer -= dt;
+    
+    // ★★★ 移動入力の修正 (カメラ基準にする) ★★★
+    Vector3 move = {0};
+    
+    // カメラの前方向と右方向のベクトルを計算
+    // カメラはプレイヤーを見ているので、逆方向が「画面の前」になります
+    Vector3 forward = { -sinf(camera_angle_rad), 0, -cosf(camera_angle_rad) };
+    Vector3 right   = { cosf(camera_angle_rad),  0, -sinf(camera_angle_rad) };
+
+    if (IsKeyDown(KEY_W)) move = Vector3Add(move, forward); // 前
+    if (IsKeyDown(KEY_S)) move = Vector3Subtract(move, forward); // 後
+    if (IsKeyDown(KEY_D)) move = Vector3Add(move, right); // 右
+    if (IsKeyDown(KEY_A)) move = Vector3Subtract(move, right); // 左
+
+    // ダッシュ方向の修正
     if ((IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_LEFT_SHIFT)) && player.dash_cooldown <= 0) {
         player.dash_duration = 0.2f;
         player.dash_cooldown = 1.5f;
-        Vector3 input = {0};
-        if (IsKeyDown(KEY_W)) input.z -= 1;
-        if (IsKeyDown(KEY_S)) input.z += 1;
-        if (IsKeyDown(KEY_A)) input.x -= 1;
-        if (IsKeyDown(KEY_D)) input.x += 1;
-        if (Vector3Length(input) > 0) player.dash_dir = Vector3Normalize(input);
-        else {
-            Vector3 aim = Vector3Subtract(aim_point, player.position);
-            aim.y = 0;
-            player.dash_dir = Vector3Normalize(aim);
+        
+        if (Vector3Length(move) > 0) {
+            player.dash_dir = Vector3Normalize(move);
+        } else {
+            // 移動していないときはマウスの方向へダッシュ
+            if (Vector3Length(diff) > 0.1f) player.dash_dir = Vector3Normalize(diff);
+            else player.dash_dir = (Vector3){0, 0, 1};
         }
         SpawnExplosion(player.position, WHITE, 5);
         AddScreenShake(0.2f);
     }
+    
+    // 通常移動の適用
     if (player.dash_duration > 0) {
         player.dash_duration -= dt;
         player.position = Vector3Add(player.position, Vector3Scale(player.dash_dir, player.speed * 3.0f * dt));
     } else {
-        Vector3 move = {0};
-        if (IsKeyDown(KEY_W)) move.z -= 1;
-        if (IsKeyDown(KEY_S)) move.z += 1;
-        if (IsKeyDown(KEY_A)) move.x -= 1;
-        if (IsKeyDown(KEY_D)) move.x += 1;
         if (Vector3Length(move) > 0) {
             move = Vector3Normalize(move);
             player.position = Vector3Add(player.position, Vector3Scale(move, player.speed * dt));
             player.walk_anim_timer += dt;
         } else player.walk_anim_timer = 0;
     }
-    if (player.dash_cooldown > 0) player.dash_cooldown -= dt;
     
     // エリア制限 (クランプ処理)
-    if (player.position.x > FIELD_LIMIT) player.position.x = FIELD_LIMIT;
-    if (player.position.x < -FIELD_LIMIT) player.position.x = -FIELD_LIMIT;
-    if (player.position.z > FIELD_LIMIT) player.position.z = FIELD_LIMIT;
-    if (player.position.z < -FIELD_LIMIT) player.position.z = -FIELD_LIMIT;
+    // if (player.position.x > FIELD_LIMIT) player.position.x = FIELD_LIMIT;
+    // if (player.position.x < -FIELD_LIMIT) player.position.x = -FIELD_LIMIT;
+    // if (player.position.z > FIELD_LIMIT) player.position.z = FIELD_LIMIT;
+    // if (player.position.z < -FIELD_LIMIT) player.position.z = -FIELD_LIMIT;
 
     if (player.shoot_cooldown > 0) player.shoot_cooldown -= dt;
     if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) && player.shoot_cooldown <= 0) {
@@ -507,7 +543,11 @@ void UpdateGame() {
         if (!bullets[i].active) continue;
         bullets[i].position = Vector3Add(bullets[i].position, Vector3Scale(bullets[i].velocity, dt));
         bullets[i].life_time -= dt;
-        if (bullets[i].life_time <= 0 || fabs(bullets[i].position.x) > 60 || fabs(bullets[i].position.z) > 60) {
+        // ▼▼▼ 修正前（原点から離れると消える） ▼▼▼
+        // if (bullets[i].life_time <= 0 || fabs(bullets[i].position.x) > 60 || fabs(bullets[i].position.z) > 60) {
+        
+        // ▼▼▼ 修正後（時間経過でのみ消えるように変更） ▼▼▼
+        if (bullets[i].life_time <= 0) { 
             bullets[i].active = false;
             continue;
         }
@@ -530,10 +570,28 @@ void UpdateGame() {
         items[i].angle += dt * 90.0f;
         items[i].life_time -= dt;
         if (items[i].life_time <= 0) items[i].active = false;
+        // UpdateGame 内のアイテム当たり判定部分
         if (Vector3Distance(player.position, items[i].position) < 2.0f) {
-            player.hp += 30;
-            if(player.hp > player.max_hp) player.hp = player.max_hp;
-            SpawnExplosion(player.position, COL_NEON_GREEN, 10);
+            if (items[i].type == ITEM_HEAL) {
+                player.hp += 30;
+                if(player.hp > player.max_hp) player.hp = player.max_hp;
+                SpawnExplosion(player.position, COL_NEON_GREEN, 10);
+            } 
+            else if (items[i].type == ITEM_EXP) {
+                player.exp += 5; // 経験値獲得
+                // レベルアップ処理
+                if (player.exp >= player.next_level_exp) {
+                    player.level++;
+                    player.exp = 0;
+                    player.next_level_exp = (int)(player.next_level_exp * 1.5f); // 必要経験値上昇
+                    player.max_hp += 20; // 最大HP上昇
+                    player.hp = player.max_hp; // 全回復
+                    player.shoot_cooldown *= 0.9f; // 連射速度アップ（これが楽しい！）
+                    SpawnExplosion(player.position, GOLD, 20); // 派手なエフェクト
+                    // ここで "LEVEL UP!" のテキストを出せると最高
+                }
+                SpawnExplosion(player.position, COL_NEON_CYAN, 5);
+            }
             items[i].active = false;
         }
     }
@@ -939,7 +997,11 @@ void DrawScene(Camera3D cam) {
             rlPushMatrix();
             rlTranslatef(items[i].position.x, 1.0f + sinf(GetTime()*3)*0.2f, items[i].position.z);
             rlRotatef(items[i].angle, 0, 1, 0);
-            DrawCube((Vector3){0,0,0}, 0.8f, 0.8f, 0.8f, COL_NEON_GREEN);
+            // DrawScene 関数内のアイテム描画部分に色分けを追加
+            // ...
+            Color itemColor = (items[i].type == ITEM_HEAL) ? COL_NEON_GREEN : COL_NEON_CYAN; // 経験値はシアン色
+            DrawCube((Vector3){0,0,0}, 0.8f, 0.8f, 0.8f, itemColor);
+            // ...
             DrawCubeWires((Vector3){0,0,0}, 0.8f, 0.8f, 0.8f, WHITE);
             rlPopMatrix();
         }
@@ -1016,11 +1078,16 @@ void SpawnEnemy(bool force_boss) {
     }
 }
 
+// Main.c の SpawnItem 関数を修正
 void SpawnItem(Vector3 pos) {
     for (int i=0; i<MAX_ITEMS; i++) {
         if (!items[i].active) {
-            items[i].active = true; items[i].position = pos;
-            items[i].type = ITEM_HEAL; items[i].life_time = 15.0f; items[i].angle = 0;
+            items[i].active = true; 
+            items[i].position = pos;
+            // 70%の確率で経験値、30%で回復にする
+            items[i].type = (GetRandomValue(0, 100) < 70) ? ITEM_EXP : ITEM_HEAL; 
+            items[i].life_time = 15.0f; 
+            items[i].angle = 0;
             break;
         }
     }
