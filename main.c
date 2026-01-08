@@ -11,7 +11,7 @@
 #define MAX_BULLETS 300
 #define MAX_ENEMIES 100
 #define MAX_PARTICLES 600
-#define MAX_ITEMS 20
+#define MAX_ITEMS 100
 #define KILLS_TO_BOSS_BASE 10
 #define TRAIL_LENGTH 10
 #define FIELD_LIMIT 45.0f // マップの広さ制限
@@ -50,6 +50,7 @@ typedef struct {
     int level;
     int exp;
     int next_level_exp;
+    int damage;
     int weapon_type; 
     float shoot_cooldown;
     
@@ -261,10 +262,13 @@ void DrawTitle() {
 void InitGame(bool reset_player) {
     if (reset_player) {
         player.position = (Vector3){ 0, 0, 0 };
-        player.speed = 10.0f;
+        player.speed = 12.0f; // 10.0f -> 12.0f (少し足も速くする)
         player.hp = 100; player.max_hp = 100;
-        player.level = 1; player.exp = 0; player.next_level_exp = 10;
+        player.level = 1; player.exp = 0; 
+        player.next_level_exp = 5; // 最初は5個拾えばレベルアップ（サクサク感）
+        player.damage = 20; // ★追加: 初期攻撃力を高めに設定
         player.weapon_type = 0;
+        player.shoot_cooldown = 0.0f; // 初期状態
         player.dash_cooldown = 0; player.dash_duration = 0;
         player.invincible_timer = 0;
         for(int i=0; i<TRAIL_LENGTH; i++) player.trail_pos[i] = player.position;
@@ -534,7 +538,9 @@ void UpdateGame() {
         Vector3 aim_dir = Vector3Normalize(Vector3Subtract(aim_point, player.position));
         aim_dir.y = 0;
         SpawnBullet(player.position, aim_dir, false, false);
-        player.shoot_cooldown = 0.2f;
+        player.shoot_cooldown = 0.15f; 
+        if (player.level > 5) player.shoot_cooldown = 0.12f;
+        if (player.level > 10) player.shoot_cooldown = 0.08f;
         AddScreenShake(0.1f);
     }
 
@@ -571,24 +577,31 @@ void UpdateGame() {
         items[i].life_time -= dt;
         if (items[i].life_time <= 0) items[i].active = false;
         // UpdateGame 内のアイテム当たり判定部分
-        if (Vector3Distance(player.position, items[i].position) < 2.0f) {
+        // アイテム当たり判定部分
+        if (Vector3Distance(player.position, items[i].position) < 3.0f) { // 2.0 -> 3.0 (拾う範囲を広く)
             if (items[i].type == ITEM_HEAL) {
                 player.hp += 30;
                 if(player.hp > player.max_hp) player.hp = player.max_hp;
                 SpawnExplosion(player.position, COL_NEON_GREEN, 10);
             } 
             else if (items[i].type == ITEM_EXP) {
-                player.exp += 5; // 経験値獲得
+                player.exp += 1; // 経験値は1ずつで管理しやすくする
+                
                 // レベルアップ処理
                 if (player.exp >= player.next_level_exp) {
                     player.level++;
                     player.exp = 0;
-                    player.next_level_exp = (int)(player.next_level_exp * 1.5f); // 必要経験値上昇
-                    player.max_hp += 20; // 最大HP上昇
+                    
+                    // 次のレベルまでの必要経験値を緩やかにする
+                    // 以前は1.5倍だったが、単なる足し算にする
+                    player.next_level_exp += 5; 
+
+                    // ステータス強化
+                    player.max_hp += 10;
                     player.hp = player.max_hp; // 全回復
-                    player.shoot_cooldown *= 0.9f; // 連射速度アップ（これが楽しい！）
-                    SpawnExplosion(player.position, GOLD, 20); // 派手なエフェクト
-                    // ここで "LEVEL UP!" のテキストを出せると最高
+                    player.damage += 5; // 攻撃力アップ！
+                    
+                    SpawnExplosion(player.position, GOLD, 20);
                 }
                 SpawnExplosion(player.position, COL_NEON_CYAN, 5);
             }
@@ -664,10 +677,14 @@ void UpdateGame() {
         };
         for (int b=0; b<MAX_BULLETS; b++) {
             if (!bullets[b].active || bullets[b].is_enemy_bullet) continue;
-            if (CheckCollisionBoxSphere(box, bullets[b].position, 0.3f)) {
+            if (CheckCollisionBoxSphere(box, bullets[b].position, 0.5f)) { // 判定も0.3->0.5にして当てやすく
                 bullets[b].active = false;
-                enemies[i].hp -= 10;
+                
+                // ★修正: 固定の10ダメージではなく、プレイヤーの攻撃力を使う
+                enemies[i].hp -= player.damage; 
+
                 enemies[i].flash_timer = 0.1f;
+                // ... (以下省略)
                 if (enemies[i].type != ENEMY_BOSS) {
                     Vector3 push = Vector3Normalize(bullets[b].velocity);
                     enemies[i].knockback = Vector3Add(enemies[i].knockback, Vector3Scale(push, 15.0f));
@@ -685,7 +702,7 @@ void UpdateGame() {
                         AddScreenShake(2.0f);
                     } else {
                         stage_kills++;
-                        if (GetRandomValue(0, 100) < 10) SpawnItem(enemies[i].position);
+                        if (GetRandomValue(0, 100) < 50) SpawnItem(enemies[i].position);
                     }
                 }
             }
@@ -852,9 +869,33 @@ void DrawGame() {
     DrawScene(camera);
     EndMode3D();
 
+    // --- UI描画 ---
+
+    // 1. ステージ数
     DrawText(TextFormat("STAGE %d", current_stage), 20, 20, 30, WHITE);
-    DrawText(TextFormat("HP: %d/%d", player.hp, player.max_hp), 20, 60, 40, (player.hp < 30 ? COL_NEON_PINK : COL_NEON_GREEN));
     
+    // 2. HP表示
+    DrawText(TextFormat("HP: %d/%d", player.hp, player.max_hp), 20, 60, 40, (player.hp < 30 ? COL_NEON_PINK : COL_NEON_GREEN));
+
+    // ▼▼▼ 追加：レベル表示 ▼▼▼
+    DrawText(TextFormat("LV. %d", player.level), 20, 110, 40, GOLD);
+
+    // ▼▼▼ 追加：経験値バー（黄色いゲージ） ▼▼▼
+    // 現在の経験値の割合を計算
+    float expRatio = (float)player.exp / (float)player.next_level_exp;
+    if (expRatio > 1.0f) expRatio = 1.0f;
+
+    // バーの背景（暗い黄色）
+    DrawRectangle(140, 120, 200, 20, (Color){ 50, 40, 0, 200 });
+    // バーの中身（明るい黄色）
+    DrawRectangle(140, 120, (int)(200 * expRatio), 20, GOLD);
+    // 枠線
+    DrawRectangleLines(140, 120, 200, 20, WHITE);
+    
+    // ついでに次のレベルまでの数値を小さく表示
+    DrawText(TextFormat("EXP: %d/%d", player.exp, player.next_level_exp), 150, 122, 10, BLACK);
+
+    // --- ボス戦ゲージなど（既存のコード） ---
     if (!boss_spawned) {
         float progress = (float)stage_kills / kills_required_for_boss;
         if(progress > 1.0) progress = 1.0;
@@ -1064,13 +1105,15 @@ void SpawnEnemy(bool force_boss) {
             }
             if (current_stage > 1 && GetRandomValue(0, 100) < 30) {
                 enemies[i].type = ENEMY_TANK;
-                enemies[i].speed = 3.5f + (current_stage * 0.2f);
-                enemies[i].max_hp = 80 + (current_stage * 20); enemies[i].hp = enemies[i].max_hp;
+                enemies[i].speed = 3.0f; // 遅くする
+                enemies[i].max_hp = 60 + (current_stage * 10); // HPを下げる
+                enemies[i].hp = enemies[i].max_hp;
                 enemies[i].attack_range = 15.0f;
             } else {
                 enemies[i].type = ENEMY_DRONE;
-                enemies[i].speed = 8.0f + (current_stage * 0.5f);
-                enemies[i].max_hp = 30 + (current_stage * 10); enemies[i].hp = enemies[i].max_hp;
+                enemies[i].speed = 6.0f; // 8.0 -> 6.0 (プレイヤーより遅くする)
+                enemies[i].max_hp = 20 + (current_stage * 5); // HPを下げる（一撃で倒せるように）
+                enemies[i].hp = enemies[i].max_hp;
                 enemies[i].attack_range = 5.0f; 
             }
             break;
