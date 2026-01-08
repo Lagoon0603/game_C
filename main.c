@@ -153,7 +153,7 @@ void UpdatePaused();
 void DrawGame();
 void DrawGamePvP();
 void DrawPaused();
-void DrawScene(Camera3D cam);
+void DrawScene(Camera3D cam, bool draw_cursor);
 void UpdateTitle();
 void DrawTitle();
 void DrawMecha(Vector3 pos, float angle, Color color, float anim_time, EnemyType type);
@@ -170,6 +170,7 @@ void DrawCyberGrid(Vector3 centerPos); // 修正: 座標連動型グリッド
 int main(void) {
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT);
     InitWindow(INITIAL_SCREEN_WIDTH, INITIAL_SCREEN_HEIGHT, "Voxel Survivor 6.1 - Bug Fixes");
+    HideCursor();
     SetTargetFPS(60); 
     
     int monitor = GetCurrentMonitor();
@@ -210,7 +211,12 @@ int main(void) {
     return 0;
 }
 
-void UpdatePaused() { if (IsKeyPressed(KEY_R)) current_state = STATE_TITLE; }
+void UpdatePaused() { 
+    if (IsKeyPressed(KEY_R)) {
+        current_state = STATE_TITLE;
+        camera_angle_rad = 0.0f; // ★追加：カメラ角度リセット
+    }
+}
 
 void DrawPaused() {
     int w = GetScreenWidth();
@@ -413,7 +419,10 @@ void UpdateGame() {
     game_time += dt;
 
     if (current_state == STATE_GAMEOVER) {
-        if (IsKeyPressed(KEY_R)) current_state = STATE_TITLE;
+        if (IsKeyPressed(KEY_R)) {
+            current_state = STATE_TITLE;
+            camera_angle_rad = 0.0f; // ★追加：カメラ角度リセット
+        }
         return;
     }
     if (current_state == STATE_STAGE_CLEAR) {
@@ -720,7 +729,10 @@ void UpdateGamePvP() {
     float dt = GetFrameTime();
     // 修正: 勝敗が決まったら入力を受け付けない
     if (current_state == STATE_PVP_RESULT) {
-        if (IsKeyPressed(KEY_R)) current_state = STATE_TITLE;
+        if (IsKeyPressed(KEY_R)) {
+            current_state = STATE_TITLE;
+            camera_angle_rad = 0.0f; // ★追加：カメラ角度リセット
+        }
         return;
     }
     
@@ -866,7 +878,7 @@ void DrawGame() {
     ClearBackground(COL_DARK_BG);
 
     BeginMode3D(camera);
-    DrawScene(camera);
+    DrawScene(camera, true);
     EndMode3D();
 
     // --- UI描画 ---
@@ -932,7 +944,7 @@ void DrawGamePvP() {
     BeginScissorMode(0, 0, screenW/2, screenH);
         ClearBackground(COL_DARK_BG);
         BeginMode3D(camera);
-            DrawScene(camera);
+            DrawScene(camera, true);
         EndMode3D();
         DrawRectangleLines(0, 0, screenW/2, screenH, COL_NEON_CYAN); 
     EndScissorMode();
@@ -942,7 +954,7 @@ void DrawGamePvP() {
     BeginScissorMode(screenW/2, 0, screenW/2, screenH);
         ClearBackground(COL_DARK_BG);
         BeginMode3D(camera2);
-            DrawScene(camera2);
+            DrawScene(camera2, false);
         EndMode3D();
         DrawRectangleLines(screenW/2, 0, screenW/2, screenH, COL_NEON_ORANGE);
     EndScissorMode();
@@ -966,14 +978,41 @@ void DrawGamePvP() {
     }
 }
 
-void DrawScene(Camera3D cam) {
-    // 修正: カメラの中心位置（=プレイヤー位置）を基準にグリッドを描画
+void DrawScene(Camera3D cam, bool draw_cursor) {
+    // 1. グリッドの描画
     DrawCyberGrid(cam.target);
 
+    // 2. 3Dカーソル（照準）の描画 
+    // ★重要: draw_cursor が true の時だけ実行する
+    if (draw_cursor) {
+        Ray ray = GetMouseRay(GetMousePosition(), cam);
+        // 平面(Y=0)との交差判定
+        if (ray.direction.y != 0) {
+            float t = -ray.position.y / ray.direction.y;
+            Vector3 aimPos = Vector3Add(ray.position, Vector3Scale(ray.direction, t));
+            
+            rlPushMatrix();
+            rlTranslatef(aimPos.x, 0.1f, aimPos.z);
+            rlRotatef(GetTime() * 90.0f, 0, 1, 0); // クルクル回す
+            
+            // 外側の四角枠
+            DrawCubeWires((Vector3){0,0,0}, 2.0f, 0.0f, 2.0f, ColorAlpha(COL_NEON_CYAN, 0.8f));
+            // 内側の点
+            DrawCube((Vector3){0,0,0}, 0.3f, 0.3f, 0.3f, WHITE);
+            
+            rlPopMatrix();
+            
+            // プレイヤーから照準へのレーザー
+            DrawLine3D(player.position, aimPos, ColorAlpha(COL_NEON_CYAN, 0.3f));
+        }
+    }
+
+    // 3. プレイヤー（自分）の描画
     Color p1Color = (player.dash_duration > 0) ? COL_NEON_CYAN : BLUE;
     if (player.invincible_timer > 0 && (int)(GetTime()*20)%2 == 0) p1Color = WHITE;
     DrawMecha(player.position, player.facing_angle, p1Color, player.walk_anim_timer, ENEMY_DRONE);
     
+    // ダッシュの残像 (P1)
     if(player.dash_duration > 0){
         for(int i=0; i<TRAIL_LENGTH; i+=2) {
             if(player.trail_pos[i].x != 0) {
@@ -983,10 +1022,13 @@ void DrawScene(Camera3D cam) {
         }
     }
 
+    // 4. P2 (対戦相手) の描画
     if (current_state == STATE_PVP || current_state == STATE_PVP_RESULT || (current_state == STATE_PAUSED && previous_state == STATE_PVP)) {
         Color p2Color = (player2.dash_duration > 0) ? COL_NEON_ORANGE : ORANGE;
         if (player2.invincible_timer > 0 && (int)(GetTime()*20)%2 == 0) p2Color = WHITE;
         DrawMecha(player2.position, player2.facing_angle, p2Color, player2.walk_anim_timer, ENEMY_TANK);
+        
+        // ダッシュの残像 (P2)
         if(player2.dash_duration > 0){
             for(int i=0; i<TRAIL_LENGTH; i+=2) {
                 if(player2.trail_pos[i].x != 0) {
@@ -997,6 +1039,7 @@ void DrawScene(Camera3D cam) {
         }
     }
 
+    // 5. 敵の描画
     for (int i=0; i<MAX_ENEMIES; i++) {
         if (!enemies[i].active) continue;
         if (!enemies[i].is_grounded) {
@@ -1009,6 +1052,7 @@ void DrawScene(Camera3D cam) {
         if (enemies[i].flash_timer > 0) eColor = WHITE;
         DrawMecha(enemies[i].position, 0, eColor, enemies[i].anim_timer, enemies[i].type);
         
+        // HPバー
         if (enemies[i].hp < enemies[i].max_hp) {
             Vector3 hpPos = enemies[i].position; 
             float barWidth = (enemies[i].type == ENEMY_BOSS ? 6.0f : 2.0f);
@@ -1020,6 +1064,7 @@ void DrawScene(Camera3D cam) {
         }
     }
     
+    // 6. 弾、アイテム、パーティクルの描画
     rlDrawRenderBatchActive(); 
     BeginBlendMode(BLEND_ADDITIVE); 
 
@@ -1038,11 +1083,8 @@ void DrawScene(Camera3D cam) {
             rlPushMatrix();
             rlTranslatef(items[i].position.x, 1.0f + sinf(GetTime()*3)*0.2f, items[i].position.z);
             rlRotatef(items[i].angle, 0, 1, 0);
-            // DrawScene 関数内のアイテム描画部分に色分けを追加
-            // ...
-            Color itemColor = (items[i].type == ITEM_HEAL) ? COL_NEON_GREEN : COL_NEON_CYAN; // 経験値はシアン色
+            Color itemColor = (items[i].type == ITEM_HEAL) ? COL_NEON_GREEN : COL_NEON_CYAN;
             DrawCube((Vector3){0,0,0}, 0.8f, 0.8f, 0.8f, itemColor);
-            // ...
             DrawCubeWires((Vector3){0,0,0}, 0.8f, 0.8f, 0.8f, WHITE);
             rlPopMatrix();
         }
